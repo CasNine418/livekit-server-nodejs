@@ -3,6 +3,7 @@ import cors from 'cors';
 import clg from './utils/clg.js';
 import config from './config.js';
 import https from 'https';
+import { WebSocketServer } from 'ws';
 import fs from 'fs';
 import db from './db/index.js';
 // import db from './db/index.js';
@@ -14,6 +15,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 const port = config.port;
+const wsPort = config.wsPort;
 
 // 密码加盐
 const hashPassword = async (funcPassword) =>{
@@ -157,18 +159,22 @@ import serverRouter from './router/server.js'
 app.use('/server', verifyToken, serverRouter);
 
 // Server.js
+app.listen(port,() =>{
+    clg(`Http Server is running at port ${port}`, 'INFO','ServerStart');
+})
 
-// app.listen(port,() =>{
-//     clg(`Server is running at port ${port}`, 'INFO','ServerStart');
+// const httpsOptions = {
+//     key: fs.readFileSync('./cert/privkey.key'), // 私钥
+//     cert: fs.readFileSync('./cert/domain.crt'), // 证书 
+//     ca: [fs.readFileSync('./cert/root_bundle.crt')] 
+// }
+
+// https.createServer(httpsOptions, app).listen(port, ()=>{
+//     console.log('LiveKit Node Server v0.0.1');
+//     clg(`Https Server is running at port ${port}`, 'INFO','ServerStart');
 // })
 
-const httpsOptions = {
-    key: fs.readFileSync('./cert/privkey.key'), // 私钥
-    cert: fs.readFileSync('./cert/domain.crt'), // 证书 
-    ca: [fs.readFileSync('./cert/root_bundle.crt')] 
-}
 
-https.createServer(httpsOptions, app).listen(port, ()=>{
-    console.log('LiveKit Node Server v0.0.1');
-    clg(`Server is running at port ${port}`, 'INFO', 'ServerStart'); 
-})
+// WebSocketServer.js
+import { onConnection } from './ws/ws.js'
+onConnection();

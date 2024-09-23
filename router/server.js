@@ -14,11 +14,10 @@ import {
     Room,
 } from 'livekit-server-sdk';
 import cors from 'cors';
-import clg from './utils/clg.js';
-import config from './config.js';
+import clg from '../utils/clg.js';
+import config from '../config.js';
 import https from 'https';
 import fs from 'fs';
-
 
 let roomCreateStatue = 0;
 
@@ -122,11 +121,12 @@ const removeParticipantHandle = async (objRoomName, objIdentity) =>{
     })
 }
 
-const app = express();
-app.use(cors());
+// const app = express();
+const router = express.Router();
+// app.use(cors());
 const port = config.port;
 
-app.post('/getToken', async (req, res) =>{
+router.post('/getToken', async (req, res) =>{
     // Url resolve
     /**
      * @class { roomName: String, identity: String, createRoom: String }
@@ -181,7 +181,7 @@ app.post('/getToken', async (req, res) =>{
     }
 })
 
-app.post('/getRoomList', async (req, res) =>{
+router.post('/getRoomList', async (req, res) =>{
     try{
         const roomList = JSON.parse(await getRoomList());
         res.send(JSON.stringify({
@@ -200,7 +200,7 @@ app.post('/getRoomList', async (req, res) =>{
     }
 })
 
-app.post('/getRoomParticipants', async(req, res) =>{
+router.post('/getRoomParticipants', async(req, res) =>{
     const _params = {};
     const params = req.url.substring(req.url.indexOf('?') + 1);
     params.split('&').forEach(item =>{
@@ -221,7 +221,7 @@ app.post('/getRoomParticipants', async(req, res) =>{
     }
 })
 
-app.post('/removeParticipant', async(req, res) =>{
+router.post('/removeParticipant', async(req, res) =>{
     const _params = {};
     const params = req.url.substring(req.url.indexOf('?') + 1);
     params.split('&').forEach(item =>{
@@ -245,13 +245,4 @@ app.post('/removeParticipant', async(req, res) =>{
 //     clg(`Server listening on port ${port}`,'INFO','ServerStart');
 // })
 
-const httpsOptions = {
-    key: fs.readFileSync('./cert/privkey.key'), // 私钥
-    cert: fs.readFileSync('./cert/domain.crt'), // 证书 
-    ca: [fs.readFileSync('./cert/root_bundle.crt')] 
-}
-
-https.createServer(httpsOptions, app).listen(port, ()=>{
-    console.log('LiveKit Node Server v0.0.1');
-    clg(`Server is running at port ${port}`, 'INFO', 'ServerStart'); 
-})
+export default router;
