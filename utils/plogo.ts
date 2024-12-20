@@ -15,4 +15,4 @@ const plogo = () =>{
     console.log("  `---`                                  '---'                  '---'         `----'      ");
 }
 
-module.exports = plogo;
+export default plogo;

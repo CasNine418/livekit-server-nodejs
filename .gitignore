@@ -1,7 +1,4 @@
 node_modules/
-cert/
-db/
-server.js.bak
-config.js
-livekitNode.zip
-server.js.bak2
+dist/
+declar/
+app_options.ts
