@@ -44,7 +44,7 @@ const createTokenWhenRoomSet = async (roomId: string, identity: string) => {
         identity: identity,
         ttl: '10m'
     })
-    at.addGrant({ roomJoin: false, room: roomId })
+    at.addGrant({ roomJoin: true, room: roomId, roomCreate: false })
 
     return at.toJwt();
 }

@@ -61,6 +61,7 @@ router.post('/login', (req: Request, res: Response) => {
 
     if(!db) {
         Clg.error('DB is not initialized', 'user.ts');
+        res.status(500).json({ message: 'Internal Server Error' });
     } else {
         const { identity, password } = req.body;
 
@@ -96,6 +97,9 @@ router.post('/login', (req: Request, res: Response) => {
                             Clg.error(`Error verifying password for user ${identity}: ${err}`, 'user.ts');
                             return res.status(500).json({ message: 'Error verifying password' });
                         })
+                } else {
+                    Clg.error(`Invalid request body for user ${identity}`, 'user.ts');
+                    return res.status(400).json({ message: 'Invalid request body' });
                 }
             })
             .catch((err) => {

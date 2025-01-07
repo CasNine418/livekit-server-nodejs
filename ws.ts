@@ -4,7 +4,7 @@ import fs from 'fs';
 import https from 'https';
 import config from './app_options';
 import Clg from './utils/clg';
-import axios from 'axios';
+import axiosuni from 'axios';
 import { roomJoinTokenResponseType, roomsResponseType } from './types/server';
 import { CreateOptions, Room } from 'livekit-server-sdk';
 import { UserInfoType, UserSymplyType } from './types/user';
@@ -62,6 +62,12 @@ interface UserConnection {
     ws: WebSocket;
     user: UserInfoType["identity"];
 }
+
+const axios = axiosuni.create({
+    httpsAgent: new https.Agent({
+        rejectUnauthorized: false, // 取消证书验证
+    }),
+});
 
 class WebSocketApp {
     private serverUserConnections: Map<string, UserConnection> = new Map();
@@ -125,12 +131,25 @@ class WebSocketApp {
 
                         const user: UserInfoType["identity"] = identity;
                         const userConnection: UserConnection = { ws, user };
-                        this.serverUserConnections.set(identity, userConnection);
+
+                        if (this.serverUserConnections.has(identity)) {
+                            Clg.error('Duplicate identity', 'createWebSocketServer');
+                            ws.send(JSON.stringify({
+                                code: 'messageError',
+                                data: 'Duplicate identity'
+                            }));
+                            ws.close(1011, 'Duplicate identity');
+                            return;
+                        } else {
+                            this.serverUserConnections.set(identity, userConnection);
+                        }
+
+                        // this.serverUserConnections.set(identity, userConnection);
 
                         wss.clients.forEach((client) => {
                             if (client.readyState === WebSocket.OPEN) {
                                 client.send(JSON.stringify({
-                                    type: 'clientConected',
+                                    code: 'clientConected',
                                     data: '',
                                     from_identity: identity
                                 }));
@@ -140,8 +159,35 @@ class WebSocketApp {
                                     code: 'messageError',
                                     data: 'Invalid request'
                                 }));
-                                ws.close();
+                                ws.close(1011, 'Invalid request');
                             }
+                        });
+
+                        let heartbeatTimeout: NodeJS.Timeout | null = null;
+
+                        const sendPing = () => {
+                            if (ws.readyState === ws.OPEN) {
+                                ws.ping();
+                                heartbeatTimeout = setTimeout(() => {
+                                    console.log('No pong received, closing connection');
+                                    ws.terminate();
+                                    this.handleClose(ws, wss, user);
+                                }, 10000);
+                            }
+                        };
+
+                        const clearHeartbeatTimeout = () => {
+                            if (heartbeatTimeout) {
+                                clearTimeout(heartbeatTimeout);
+                                heartbeatTimeout = null;
+                            }
+                        }
+
+                        const heartbeatInterval = setInterval(sendPing, 30000);
+
+                        ws.on('pong', () => {
+                            Clg.info('Received pong', 'createWebSocketServer');
+                            clearHeartbeatTimeout();
                         });
 
                         ws.on('message', (message: Buffer) => {
@@ -151,13 +197,14 @@ class WebSocketApp {
                         ws.on('close', () => {
                             this.handleClose(ws, wss, user);
                         })
+                        
                     } else {
                         Clg.error('Invalid token or identity', 'createWebSocketServer');
                         ws.send(JSON.stringify({
                             code: 'messageError',
                             data: 'Invalid token or identity'
                         }));
-                        ws.close();
+                        ws.close(1011, 'Invalid token or identity');
                     }
                 } else {
                     Clg.error('Invalid request: params', 'createWebSocketServer');
@@ -165,7 +212,7 @@ class WebSocketApp {
                         code: 'messageError',
                         data: 'Invalid request'
                     }));
-                    ws.close();
+                    ws.close(1011, 'Invalid request');
                 }
             } else {
                 Clg.error('Invalid request: req.url', 'createWebSocketServer');
@@ -173,7 +220,7 @@ class WebSocketApp {
                     code: 'messageError',
                     data: 'Invalid request'
                 }));
-                ws.close();
+                ws.close(1011, 'Invalid request');
             }
         });
     }
@@ -198,7 +245,7 @@ class WebSocketApp {
                         await this.handleClientJoin(ws, res);
                         break;
                     case 'clientCurrentJoin':
-                        await this.handleClientCurrentJoin(res);
+                        await this.handleClientCurrentJoin(res, wss, ws);
                         break;
                     // 用户主动退出的情况，后面细分
                     case 'clientQuit':
@@ -210,6 +257,8 @@ class WebSocketApp {
                     case 'clientDestroyRoom':
                         await this.handleClientDestroyRoom(ws, wss, res);
                         break;
+                    case 'clientPong':
+                        
                     default:
                         Clg.error('Unknown message code', 'createWebSocketServer');
                         ws.send(JSON.stringify({
@@ -252,7 +301,7 @@ class WebSocketApp {
         wss.clients.forEach((client) => {
             if (client.readyState === WebSocket.OPEN) {
                 client.send(JSON.stringify({
-                    type: 'clientDisconnected',
+                    code: 'clientDisconnected',
                     data: '',
                     from_identity: user
                 }));
@@ -349,6 +398,24 @@ class WebSocketApp {
         const userInfo: any = res.data.user_info;
 
         if (this.isUserSymplyType(userInfo) && roomId && res.token) {
+
+            for (const currentRoomId in this.serverRoomParticipants) {
+                if (currentRoomId !== roomId) {
+                    const participants = this.serverRoomParticipants[currentRoomId];
+                    const memberIndex = participants.findIndex(member => member.user.uid === userInfo.uid);
+                    if (memberIndex !== -1) {
+                        const memberStatus = participants[memberIndex];
+                        if (memberStatus.status === 0) { // 0: 准备加入
+                            if (memberStatus.timerId) {
+                                clearTimeout(memberStatus.timerId);
+                            }
+                            participants.splice(memberIndex, 1);
+                            Clg.info(`User ${userInfo.username} removed from room ${currentRoomId} due to joining another room`, 'createWebSocketServer');
+                        }
+                    }
+                }
+            }
+
             if (!this.serverRoomParticipants[roomId]) {
                 this.serverRoomParticipants[roomId] = [];
             }
@@ -482,7 +549,7 @@ class WebSocketApp {
         wss.clients.forEach((client) => {
             if (client.readyState === WebSocket.OPEN) {
                 client.send(JSON.stringify({
-                    type: 'clientDisconnected',
+                    code: 'clientDisconnected',
                     data: '',
                     from_identity: userInfo.identity
                 }));
@@ -588,7 +655,7 @@ class WebSocketApp {
         }
     }
 
-    private async handleClientCurrentJoin(res: wsMessageType) {
+    private async handleClientCurrentJoin(res: wsMessageType, wss: ws.Server, ws: ws) {
         const roomId: string = res.data.room_id;
         const userInfo: any = res.data.user_info;
 
@@ -602,6 +669,23 @@ class WebSocketApp {
                     // 更新状态为加入成功
                     memberStatus.status = 2;
                     memberStatus.updateTime = Date.now();
+
+                    wss.clients.forEach((client) => {
+                        if (client.readyState === WebSocket.OPEN) {
+                            client.send(JSON.stringify({
+                                code: 'clientCurrentJoinResponseSuccess',
+                                data: '',
+                                from_identity: userInfo.identity
+                            }));
+                        } else {
+                            Clg.error('Client Error', 'createWebSocketServer');
+                            ws.send(JSON.stringify({
+                                code: 'messageError',
+                                data: 'Invalid request'
+                            }));
+                            ws.close(1011, 'Invalid request');
+                        }
+                    });
                 } else {
                     Clg.error(`Timer for user ${memberStatus.user.username} in room ${roomId} not found`, 'createWebSocketServer');
                 }
@@ -645,6 +729,9 @@ class WebSocketApp {
                 Clg.error(error, 'createWebSocketServer');
                 if (retryCount > 0) {
                     setTimeout(() => this.initializeRoomMapping(retryCount - 1, delay), delay);
+                } else {
+                    Clg.error('Failed to initialize room mapping after retries', 'createWebSocketServer');
+                    process.exit(1);
                 }
             });
     }

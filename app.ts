@@ -6,7 +6,6 @@
 // packages
 import express, { Request, Response, NextFunction, ErrorRequestHandler } from 'express';
 import cors from 'cors';
-import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { expressjwt } from 'express-jwt';
 
@@ -107,15 +106,20 @@ app.post('/isTokenValid', (req: Request, res: Response) => {
 })
 
 // 路由
+
 import user from './router/user';
 app.use('/user', user);
 
 import server from './router/server';
-import wss from './wsapp';
-import createWebSocketServer from './wsapp';
-import WebSocketApp from './ws';
 app.use('/server', verifyToken, server);
 
+app.get('/verify_token', verifyToken, (req: Request, res: Response) => {
+    res.status(200).json({
+        message: 'Token valid',
+    });
+});
+
+import WebSocketApp from './ws';
 
 // 启动服务器
 if(mode === 'http') {
