@@ -1,9 +1,8 @@
 import * as crypto from 'crypto';
 
-// 定义加密算法和密钥
 const ALGORITHM = 'aes-256-gcm';
-const KEY = crypto.randomBytes(32); // 生成一个随机密钥
-const IV_LENGTH = 16; // 初始化向量长度
+const KEY = crypto.randomBytes(32);
+const IV_LENGTH = 16;
 
 /**
  * 使用对称加密算法加密给定的文本
